@@ -15,44 +15,63 @@ sub interrupt {
 }
 
 sub accent {
-   local($_) = @_;
-   s/.[\010\177]//g;
-   s/!([A-Za-z])/\241$1/g;
-   s/\?([A-Za-z])/\277$1/g;
-   s/''/\200/g;
-   s/A'/\301/g;
-   s/E'/\311/g;
-   s/I'/\315/g;
-   s/N~/\321/g;
-   s/O'/\323/g;
-   s/U'/\332/g;
-   s/a'/\341/g;
-   s/e'/\351/g;
-   s/i'/\355/g;
-   s/n~/\361/g;
-   s/o'/\363/g;
-   s/u'/\372/g;
-   s/\200/'/g;
-   return $_;
+   my @values = @_;
+   map {
+      s/.[\010\177]//g;
+      s/!([A-Za-z])/\241$1/g;
+      s/\?([A-Za-z])/\277$1/g;
+      s/''/\200/g;
+      s/A'/\301/g;
+      s/E'/\311/g;
+      s/I'/\315/g;
+      s/N~/\321/g;
+      s/O'/\323/g;
+      s/U'/\332/g;
+      s/a'/\341/g;
+      s/e'/\351/g;
+      s/i'/\355/g;
+      s/n~/\361/g;
+      s/o'/\363/g;
+      s/u'/\372/g;
+      s/\200/'/g;
+   } @values;
+   return wantarray ? @values : $values[0];
+}
+
+sub noprompt {
+   my @values = @_;
+   map {
+      s/ *\[.*?\] */ /;
+      s/^ +//;
+      s/ +$//;
+   } @values;
+   return wantarray ? @values : $values[0];
 }
 
 sub compare {
    local($a,$b) = @_;
 
-   grep(tr/A-Z\301\311\315\321\323\332/a-z\341\351\355\361\363\372/,$a,$b);
-   grep((s/\341/a'/g,s/\351/e'/g,s/\355/i'/g,s/\363/o'/g,s/\372/u'/g),$a,$b);
-   grep(s/\bi'm\b/i am/,$a,$b);
-   grep(s/\byou're\b/you are/,$a,$b);
-   grep(s/\bhe's\b/he is/,$a,$b);
-   grep(s/\bshe's\b/she is/,$a,$b);
-   grep(s/\bwe're\b/we are/,$a,$b);
-   grep(s/\bthey're\b/they are/,$a,$b);
-   grep(s/\bwhat's\b/what is/,$a,$b);
-   grep(s/\bit's\b/it is/,$a,$b);
-   grep(s/ *\.\.\./ */,$a,$b);
-   grep(s/^ +//,$a,$b);
-   grep(s/ +$//,$a,$b);
-   grep(s/  +/ /,$a,$b);
+   map {
+      $_ = &noprompt($_);
+      tr/A-Z\301\311\315\321\323\332/a-z\341\351\355\361\363\372/;
+      s/\341/a'/g;
+      s/\351/e'/g;
+      s/\355/i'/g;
+      s/\363/o'/g;
+      s/\372/u'/g;
+      s/\bi'm\b/i am/;
+      s/\byou're\b/you are/;
+      s/\bhe's\b/he is/;
+      s/\bshe's\b/she is/;
+      s/\bwe're\b/we are/;
+      s/\bthey're\b/they are/;
+      s/\bwhat's\b/what is/;
+      s/\bit's\b/it is/;
+      s/ *\.\.\. */ /;
+      s/^ +//;
+      s/ +$//;
+      s/  +/ /;
+   } $a,$b;
    return $a eq $b;
 }
 
@@ -132,6 +151,8 @@ if ($review) {
 print "Reviewing data items while loading.  Press a key after each one...\n"
    if $review;
 
+system "/bin/stty echo icanon eof ^d" unless $review;
+
 for $file (@files) {
    print "Loading data file \"$file\"...\n";
    print LOG "Loading data file \"$file\"...\n";
@@ -139,35 +160,39 @@ for $file (@files) {
    $source =~ s/\.further$//;
    open(IN,"<$file") || die "$file: $!\n";
    while (<IN>) {
-      chop;
-      next if /^#/;
+      chomp;
+      if (/^#/) {
+         print "$_\n" if $review;
+         next;
+      }
       next unless /\S/;
       if (($x,$y) = /^ *(.*[^ ]) *<-> *(.*[^ ]) *$/) {
-         $x = &accent($x);
-         $y = &accent($y);
-         die "Duplicate item: \"$x\"" if $ans{$x} && $ans{$x} ne $y;
+         ($x,$y) = &accent($x,$y);
+         die "Duplicate item: \"$x\"" if $ans{$x} and &noprompt($ans{$x}) ne
+            &noprompt($y);
          $ans{$x} = $y;
          $source{$x} = $source;
-         die "Duplicate item: \"$y\"" if $ans{$y} && $ans{$y} ne $x;
+         die "Duplicate item: \"$y\"" if $ans{$y} and &noprompt($ans{$y}) ne
+            &noprompt($x);
          $ans{$y} = $x;
          $source{$y} = $source;
          push(@drill,$x,$y);
          if ($review) {
+            print "\n";
             print "$x -> $y\n";
-            ($nfound,$timeleft) = select($rout = $rin,undef,undef,10);
-            getc(STDIN) if $nfound > 0;
             print "$y -> $x\n";
             ($nfound,$timeleft) = select($rout = $rin,undef,undef,10);
             getc(STDIN) if $nfound > 0;
          }
       } elsif (($x,$y) = /^ *(.*[^ ]) *-> *(.*[^ ]) *$/) {
-         $x = &accent($x);
-         $y = &accent($y);
-         die "Duplicate item: \"$x\"" if $ans{$x} && $ans{$x} ne $y;
+         ($x,$y) = &accent($x,$y);
+         die "Duplicate item: \"$x\"" if $ans{$x} and &noprompt($ans{$x}) ne
+            &noprompt($y);
          $ans{$x} = $y;
          $source{$x} = $source;
          push(@drill,$x);
          if ($review) {
+            print "\n";
             print "$x -> $y\n";
             ($nfound,$timeleft) = select($rout = $rin,undef,undef,10);
             getc(STDIN) if $nfound > 0;
@@ -180,6 +205,7 @@ for $file (@files) {
    if ($review) {
       print "Press return to continue: ";
       0 while getc(STDIN) ne "\n";
+      print "\n";
    } else {
       sleep 1;
    }
