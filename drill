@@ -1,0 +1,295 @@
+#!/usr/bin/perl
+
+sub interrupt {
+   $SIG{INT} = IGNORE;
+   system "/bin/stty echo icanon eof ^d";
+   print LOG "Drill run interrupted with Control-C.\n";
+   if ($clear eq "") {
+      print "\n";
+      print LOG "\n";
+      close LOG;
+      exit 0;
+   } else {
+      goto finished;
+   }
+}
+
+sub accent {
+   local($_) = @_;
+   s/.[\010\177]//g;
+   s/!([A-Za-z])/\241$1/g;
+   s/\?([A-Za-z])/\277$1/g;
+   s/''/\200/g;
+   s/A'/\301/g;
+   s/E'/\311/g;
+   s/I'/\315/g;
+   s/N~/\321/g;
+   s/O'/\323/g;
+   s/U'/\332/g;
+   s/a'/\341/g;
+   s/e'/\351/g;
+   s/i'/\355/g;
+   s/n~/\361/g;
+   s/o'/\363/g;
+   s/u'/\372/g;
+   s/\200/'/g;
+   return $_;
+}
+
+sub compare {
+   local($a,$b) = @_;
+
+   grep(tr/A-Z\301\311\315\321\323\332/a-z\341\351\355\361\363\372/,$a,$b);
+   grep((s/\341/a'/g,s/\351/e'/g,s/\355/i'/g,s/\363/o'/g,s/\372/u'/g),$a,$b);
+   grep(s/\bi'm\b/i am/,$a,$b);
+   grep(s/\byou're\b/you are/,$a,$b);
+   grep(s/\bhe's\b/he is/,$a,$b);
+   grep(s/\bshe's\b/she is/,$a,$b);
+   grep(s/\bwe're\b/we are/,$a,$b);
+   grep(s/\bthey're\b/they are/,$a,$b);
+   grep(s/\bwhat's\b/what is/,$a,$b);
+   grep(s/\bit's\b/it is/,$a,$b);
+   grep(s/ *\.\.\./ */,$a,$b);
+   grep(s/^ +//,$a,$b);
+   grep(s/ +$//,$a,$b);
+   grep(s/  +/ /,$a,$b);
+   return $a eq $b;
+}
+
+$| = 1;
+
+if ($ARGV[0] eq "-nolog") {
+   shift;
+   open(LOG,">/dev/null") || die "/dev/null: $!\n";
+} else {
+   open(LOG,">>/tmp/drill.log") || die "/tmp/drill.log: $!\n";
+   select LOG;
+   $| = 1;
+   select STDOUT;
+}
+
+@ARGV = grep {$_ ne "drill"} @ARGV;
+map {s/\.further$//;} @ARGV;
+
+die "Usage: drill <datafiles>\n" unless @ARGV;
+
+$SIG{INT} = "interrupt";
+
+open(STDIN,"</dev/tty") || die "/dev/tty: $!\n";
+
+print LOG "Drill run started: ",`date`;
+print LOG "Current directory: ",`pwd`;
+print LOG "Command: drill @ARGV\n";
+
+system "/bin/stty -echo -icanon min 1 time 1";
+$rin = "";
+vec($rin,fileno(STDIN),1) = 1;
+
+@further = @ARGV;
+@further = grep(s/$/.further/ && -f $_,@further);
+@files = grep(!/\.further$/ && -f $_,@ARGV);
+
+if (@further) {
+   print "\nThere are items you still need further work on.  You may either\n";
+   print "limit the drill to the items needing further work, or use all of\n";
+   print "the selected data items.\n\n";
+   print "Limit the drill to items needing further work? [y] ";
+   $ans = getc(STDIN);
+   if ($ans =~ /^n/i) {
+      print "No.\n\nLoading all data items...\n";
+      $min = @files == 1 ? 2 : 1;
+      $review++ if @files == 1;
+   } else {
+      print "Yes.\n\nOnly loading items you need further work on...\n";
+      @files = @further;
+      $min = 3;
+   }
+} else {
+   $min = @files == 1 ? 2 : 1;
+   $review++ if @files == 1;
+}
+
+if ($review) {
+   print "\nReview data items as they are loaded? [y] ";
+   $ans = getc(STDIN);
+   if ($ans =~ /^n/i) {
+      print "No.\n\n";
+      $review = 0;
+   } else {
+      print "Yes.\n\n";
+   }
+} else {
+   print "\nReview data items as they are loaded? [n] ";
+   $ans = getc(STDIN);
+   if ($ans =~ /^y/i) {
+      print "Yes.\n\n";
+      $review = 1;
+   } else {
+      print "No.\n\n";
+   }
+}
+
+print "Reviewing data items while loading.  Press a key after each one...\n"
+   if $review;
+
+for $file (@files) {
+   print "Loading data file \"$file\"...\n";
+   print LOG "Loading data file \"$file\"...\n";
+   $source = $file;
+   $source =~ s/\.further$//;
+   open(IN,"<$file") || die "$file: $!\n";
+   while (<IN>) {
+      chop;
+      next if /^#/;
+      next unless /\S/;
+      if (($x,$y) = /^ *(.*[^ ]) *<-> *(.*[^ ]) *$/) {
+         $x = &accent($x);
+         $y = &accent($y);
+         die "Duplicate item: \"$x\"" if $ans{$x} && $ans{$x} ne $y;
+         $ans{$x} = $y;
+         $source{$x} = $source;
+         die "Duplicate item: \"$y\"" if $ans{$y} && $ans{$y} ne $x;
+         $ans{$y} = $x;
+         $source{$y} = $source;
+         push(@drill,$x,$y);
+         if ($review) {
+            print "$x -> $y\n";
+            ($nfound,$timeleft) = select($rout = $rin,undef,undef,10);
+            getc(STDIN) if $nfound > 0;
+            print "$y -> $x\n";
+            ($nfound,$timeleft) = select($rout = $rin,undef,undef,10);
+            getc(STDIN) if $nfound > 0;
+         }
+      } elsif (($x,$y) = /^ *(.*[^ ]) *-> *(.*[^ ]) *$/) {
+         $x = &accent($x);
+         $y = &accent($y);
+         die "Duplicate item: \"$x\"" if $ans{$x} && $ans{$x} ne $y;
+         $ans{$x} = $y;
+         $source{$x} = $source;
+         push(@drill,$x);
+         if ($review) {
+            print "$x -> $y\n";
+            ($nfound,$timeleft) = select($rout = $rin,undef,undef,10);
+            getc(STDIN) if $nfound > 0;
+         }
+      } else {
+         die "Unrecognized drill item description";
+      }
+   }
+   close(IN);
+   if ($review) {
+      print "Press return to continue: ";
+      0 while getc(STDIN) ne "\n";
+   } else {
+      sleep 1;
+   }
+}
+
+system "/bin/stty echo icanon eof ^d";
+
+srand;
+$clear = `clear`;
+
+printf "$clear\n%d drill items loaded.\n\n",int(@drill);
+
+while (@drill || @again) {
+   unless (@drill) {
+      @drill = @again;
+      @again = ();
+   }
+   $drill = splice(@drill,int(rand(@drill)),1);
+   item: {
+      printf "\n(%d left) %s -> ",@drill + 1,$drill;
+      chop($ans = <STDIN>);
+      $ans = &accent($ans);
+      if (&compare($ans,$ans{$drill})) {
+         $right{$drill}++;
+         push(@again,$drill) if $right{$drill} < $wrong{$drill} + $min;
+         print "$clear\n";
+         print "$drill -> $ans{$drill}\n\n";
+         printf "Correct.  (%d total items remaining)\n\n",@drill + @again;
+         $last = "";
+      } elsif (&compare($ans,"")) {
+         $wrong{$drill} += 0;
+         print "$clear\n";
+         print "Correct answer: $drill -> $ans{$drill}\n\n";
+         $last = "";
+         redo item;
+      } elsif (&compare($ans,"=")) {
+         if ($last) {
+            $right{$last}++;
+            $wrong{$last}--;
+            pop(@again) unless $right{$drill} < $wrong{$drill} + $min;
+            print LOG "   Marked okay: \"$last\"\n";
+            print "$clear\n";
+            print "Last answer marked okay.\n\n";
+            print "Correct answer was: $last -> $ans{$last}\n\n";
+            $last = "";
+         } else {
+            print "$clear\n";
+            print "Last answer was not wrong.\n\n";
+         }
+         redo item;
+      } else {
+         $wrong{$drill}++;
+         push(@again,$drill);
+         print LOG "   Wrong: \"$drill\" -> \"$ans\"\n";
+         print "$clear\n";
+         print "$drill -> $ans\n\n";
+         print "Wrong.";
+         printf " (x%d)",$wrong{$drill} if $wrong{$drill} > 1;
+         printf "  (%d total items remaining)\n\n",@drill + @again;
+         print "Correct answer: $drill -> $ans{$drill}\n\n";
+         $last = $drill;
+      }
+   }
+}
+
+finished:
+
+@wrong = sort keys %wrong;
+
+unlink @further;
+if (@wrong) {
+   printf "\n\n%d items need more work:\n",int(@wrong);
+   printf LOG "%d items need more work:\n",int(@wrong);
+   foreach $wrong (@wrong) {
+      $file = "$source{$wrong}.further";
+      open(OUT,">>$file") || die "$file: $!\n";
+      $_ = "$wrong -> $ans{$wrong}\n";
+      s/'/''/g;
+      print OUT;
+      close(OUT);
+      print "$wrong -> $ans{$wrong}";
+      printf " (x%d)",$wrong{$wrong} if $wrong{$wrong} > 1;
+      print "\n";
+      print LOG "   From file \"$source{$wrong}\": $wrong -> $ans{$wrong}";
+      printf LOG " (x%d)",$wrong{$wrong} if $wrong{$wrong} > 1;
+      print LOG "\n";
+   }
+} else {
+   print "\nAll answers were correct.\n";
+   print LOG "All answers were correct.\n";
+}
+
+push(@drill,@again);
+@drill = grep(!defined($wrong{$_}),@drill);
+
+if (@drill) {
+   printf "\n%d items were not wrong, but also not finished:\n",int(@drill);
+   printf LOG "%d items were not wrong, but also not finished:\n",int(@drill);
+   foreach $drill (@drill) {
+      $file = "$source{$drill}.further";
+      open(OUT,">>$file") || die "$file: $!\n";
+      $_ = "$drill -> $ans{$drill}\n";
+      s/'/''/g;
+      print OUT;
+      close(OUT);
+      print "$drill -> $ans{$drill}\n";
+      print LOG "   From file \"$source{$drill}\": $drill -> $ans{$drill}\n";
+   }
+}
+
+print LOG "Drill run finished: ",`date`,"\n";
+
+close LOG;
