@@ -81,7 +81,7 @@ if ($ARGV[0] eq "-nolog") {
    shift;
    open(LOG,">/dev/null") || die "/dev/null: $!\n";
 } else {
-   open(LOG,">>/tmp/drill.log") || die "/tmp/drill.log: $!\n";
+   open(LOG,">>$ENV{HOME}/drill.log") || die "$ENV{HOME}/drill.log: $!\n";
    select LOG;
    $| = 1;
    select STDOUT;
