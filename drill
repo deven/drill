@@ -1,5 +1,56 @@
 #!/usr/bin/perl
 
+sub finished () {
+   @wrong = sort keys %wrong;
+
+   unlink @further;
+   if (@wrong) {
+      printf "\n\n%d items need more work:\n",int(@wrong);
+      printf LOG "%d items need more work:\n",int(@wrong);
+      foreach $wrong (@wrong) {
+         $file = "$source{$wrong}.further";
+         open(OUT,">>$file") || die "$file: $!\n";
+         $_ = "$wrong -> $ans{$wrong}\n";
+         s/'/''/g;
+         print OUT;
+         close(OUT);
+         print "$wrong -> $ans{$wrong}";
+         printf " (x%d)",$wrong{$wrong} if $wrong{$wrong} > 1;
+         print "\n";
+         print LOG "   From file \"$source{$wrong}\": $wrong -> $ans{$wrong}";
+         printf LOG " (x%d)",$wrong{$wrong} if $wrong{$wrong} > 1;
+         print LOG "\n";
+      }
+   } else {
+      print "\nAll answers were correct.\n";
+      print LOG "All answers were correct.\n";
+   }
+
+   push(@drill,@again);
+   @drill = grep(!defined($wrong{$_}),@drill);
+
+   if (@drill) {
+      printf "\n%d items were not wrong, but also not finished:\n",int(@drill);
+      printf LOG "%d items were not wrong, but also not finished:\n",int(@drill);
+      foreach $drill (@drill) {
+         $file = "$source{$drill}.further";
+         open(OUT,">>$file") || die "$file: $!\n";
+         $_ = "$drill -> $ans{$drill}\n";
+         s/'/''/g;
+         print OUT;
+         close(OUT);
+         print "$drill -> $ans{$drill}\n";
+         print LOG "   From file \"$source{$drill}\": $drill -> $ans{$drill}\n";
+      }
+   }
+
+   print LOG "Drill run finished: ",`date`,"\n";
+
+   close LOG;
+
+   exit 0;
+}
+
 sub interrupt {
    $SIG{INT} = IGNORE;
    system "/bin/stty echo icanon eof ^d";
@@ -10,7 +61,7 @@ sub interrupt {
       close LOG;
       exit 0;
    } else {
-      goto finished;
+      finished;
    }
 }
 
@@ -271,51 +322,4 @@ while (@drill || @again) {
    }
 }
 
-finished:
-
-@wrong = sort keys %wrong;
-
-unlink @further;
-if (@wrong) {
-   printf "\n\n%d items need more work:\n",int(@wrong);
-   printf LOG "%d items need more work:\n",int(@wrong);
-   foreach $wrong (@wrong) {
-      $file = "$source{$wrong}.further";
-      open(OUT,">>$file") || die "$file: $!\n";
-      $_ = "$wrong -> $ans{$wrong}\n";
-      s/'/''/g;
-      print OUT;
-      close(OUT);
-      print "$wrong -> $ans{$wrong}";
-      printf " (x%d)",$wrong{$wrong} if $wrong{$wrong} > 1;
-      print "\n";
-      print LOG "   From file \"$source{$wrong}\": $wrong -> $ans{$wrong}";
-      printf LOG " (x%d)",$wrong{$wrong} if $wrong{$wrong} > 1;
-      print LOG "\n";
-   }
-} else {
-   print "\nAll answers were correct.\n";
-   print LOG "All answers were correct.\n";
-}
-
-push(@drill,@again);
-@drill = grep(!defined($wrong{$_}),@drill);
-
-if (@drill) {
-   printf "\n%d items were not wrong, but also not finished:\n",int(@drill);
-   printf LOG "%d items were not wrong, but also not finished:\n",int(@drill);
-   foreach $drill (@drill) {
-      $file = "$source{$drill}.further";
-      open(OUT,">>$file") || die "$file: $!\n";
-      $_ = "$drill -> $ans{$drill}\n";
-      s/'/''/g;
-      print OUT;
-      close(OUT);
-      print "$drill -> $ans{$drill}\n";
-      print LOG "   From file \"$source{$drill}\": $drill -> $ans{$drill}\n";
-   }
-}
-
-print LOG "Drill run finished: ",`date`,"\n";
-
-close LOG;
+finished;
