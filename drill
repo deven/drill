@@ -1,5 +1,7 @@
 #!/usr/bin/perl
 
+use Time::HiRes qw(time);
+
 sub finished () {
    @wrong = sort keys %wrong;
 
@@ -63,6 +65,20 @@ sub interrupt {
    } else {
       finished;
    }
+}
+
+sub fix_backspace {
+   local $_ = shift @_;
+
+   if (/\010/) {
+      system "/bin/stty erase 010";
+   } elsif (/\177/) {
+      system "/bin/stty erase 0177";
+   }
+
+   s/(^|.)[\010\177]// while /[\010\177]/;
+
+   return $_;
 }
 
 sub accent {
@@ -269,6 +285,7 @@ srand;
 $clear = `clear`;
 
 printf "$clear\n%d drill items loaded.\n\n",int(@drill);
+printf LOG "%d drill items loaded: %s",int(@drill),`date`;
 
 while (@drill || @again) {
    unless (@drill) {
@@ -278,17 +295,22 @@ while (@drill || @again) {
    $drill = splice(@drill,int(rand(@drill)),1);
    item: {
       printf "\n(%d left) %s -> ",@drill + 1,$drill;
+      $asked = time;
       chop($ans = <STDIN>);
+      $duration = time - $asked;
+      $ans = &fix_backspace($ans);
       $ans = &accent($ans);
       if (&compare($ans,$ans{$drill})) {
          $right{$drill}++;
          push(@again,$drill) if $right{$drill} < $wrong{$drill} + $min;
+         printf LOG "   Right: \"%s\" -> \"%s\" (%.2fs)\n", $drill, $ans, $duration;
          print "$clear\n";
          print "$drill -> $ans{$drill}\n\n";
-         printf "Correct.  (%d total items remaining)\n\n",@drill + @again;
+         printf "Correct answer in %.2f seconds.  (%d total items remaining)\n\n", $duration, @drill + @again;
          $last = "";
       } elsif (&compare($ans,"")) {
          $wrong{$drill} += 0;
+         printf LOG "   Check: \"%s\" -> \"%s\" (%.2fs)\n", $drill, $ans{$drill}, $duration;
          print "$clear\n";
          print "Correct answer: $drill -> $ans{$drill}\n\n";
          $last = "";
@@ -298,7 +320,7 @@ while (@drill || @again) {
             $right{$last}++;
             $wrong{$last}--;
             pop(@again) unless $right{$drill} < $wrong{$drill} + $min;
-            print LOG "   Marked okay: \"$last\"\n";
+            printf LOG "   Marked okay: \"%s\" (%.2fs)\n", $last, $duration;
             print "$clear\n";
             print "Last answer marked okay.\n\n";
             print "Correct answer was: $last -> $ans{$last}\n\n";
@@ -311,10 +333,10 @@ while (@drill || @again) {
       } else {
          $wrong{$drill}++;
          push(@again,$drill);
-         print LOG "   Wrong: \"$drill\" -> \"$ans\"\n";
+         printf LOG "   Wrong: \"%s\" -> \"%s\" (%.2fs)\n", $drill, $ans, $duration;
          print "$clear\n";
          print "$drill -> $ans\n\n";
-         print "Wrong.";
+         printf "Wrong answer in %.2f seconds.", $duration;
          printf " (x%d)",$wrong{$drill} if $wrong{$drill} > 1;
          printf "  (%d total items remaining)\n\n",@drill + @again;
          print "Correct answer: $drill -> $ans{$drill}\n\n";
