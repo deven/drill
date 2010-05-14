@@ -78,6 +78,9 @@ sub fix_backspace {
 
    s/(^|.)[\010\177]// while /[\010\177]/;
 
+   s/^\s+//;
+   s/\s+$//;
+
    return $_;
 }
 
@@ -225,8 +228,6 @@ if ($review) {
 print "Reviewing data items while loading.  Press a key after each one...\n"
    if $review;
 
-system "/bin/stty echo icanon eof ^d" unless $review;
-
 for $file (@files) {
    print "Loading data file \"$file\"...\n";
    print LOG "Loading data file \"$file\"...\n";
@@ -276,22 +277,27 @@ for $file (@files) {
       }
    }
    close(IN);
-   if ($review) {
-      print "Press return to continue: ";
-      0 while getc(STDIN) ne "\n";
-      print "\n";
-   } else {
-      sleep 1;
-   }
 }
+
+printf "%d drill items loaded.\n\n",int(@drill);
+printf LOG "%d drill items loaded.\n",int(@drill);
+
+if ($time_limit > 0) {
+   print "TIME LIMIT: $time_limit seconds\n\n";
+   print LOG "TIME LIMIT: $time_limit seconds\n";
+}
+
+print "Type a capital \"Y\" to start the drill: ";
+0 while getc(STDIN) ne "Y";
+print "\n";
 
 system "/bin/stty echo icanon eof ^d";
 
 srand;
 $clear = `clear`;
 
-printf "$clear\n%d drill items loaded.\n\n",int(@drill);
-printf LOG "%d drill items loaded: %s",int(@drill),`date`;
+printf "%s\n\n\nStarting drill.\n\n",$clear,int(@drill);
+print LOG "Starting drill: `date`";
 
 while (@drill || @again) {
    unless (@drill) {
@@ -313,9 +319,10 @@ while (@drill || @again) {
             printf LOG "   Limit: \"%s\" -> \"%s\" (%.2fs) [TOO SLOW]\n", $drill, $ans, $duration;
             print "$clear\n";
             print "$drill -> $ans\n\n";
-            printf "Correct answer in %.2f seconds.  Too slow, counted as wrong.", $duration;
+            printf "Correct answer in %.2f seconds.  (%d total items remaining)\n\n", $duration, @drill + @again;
+            print "Time limit of $time_limit seconds exceeded, scored as wrong.";
             printf " (x%d)",$wrong{$drill} if $wrong{$drill} > 1;
-            printf "  (%d total items remaining)\n\n",@drill + @again;
+            print "\n\n";
             $last = $drill;
          } else {
             $right{$drill}++;
