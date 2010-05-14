@@ -154,6 +154,12 @@ if ($ARGV[0] eq "-nolog") {
    select STDOUT;
 }
 
+if ($ARGV[0] =~ /^-L([\d\.]+)$/) {
+   shift;
+   $time_limit = $1;
+   die "Invalid time limit: \"$time_limit\"\n" unless $time_limit > 0;
+}
+
 @ARGV = grep {$_ ne "drill"} @ARGV;
 map {s/\.further$//;} @ARGV;
 
@@ -301,13 +307,25 @@ while (@drill || @again) {
       $ans = &fix_backspace($ans);
       $ans = &accent($ans);
       if (&compare($ans,$ans{$drill})) {
-         $right{$drill}++;
-         push(@again,$drill) if $right{$drill} < $wrong{$drill} + $min;
-         printf LOG "   Right: \"%s\" -> \"%s\" (%.2fs)\n", $drill, $ans, $duration;
-         print "$clear\n";
-         print "$drill -> $ans{$drill}\n\n";
-         printf "Correct answer in %.2f seconds.  (%d total items remaining)\n\n", $duration, @drill + @again;
-         $last = "";
+         if ($time_limit > 0 and $duration > $time_limit) {
+            $wrong{$drill}++;
+            push(@again,$drill);
+            printf LOG "   Limit: \"%s\" -> \"%s\" (%.2fs) [TOO SLOW]\n", $drill, $ans, $duration;
+            print "$clear\n";
+            print "$drill -> $ans\n\n";
+            printf "Correct answer in %.2f seconds.  Too slow, counted as wrong.", $duration;
+            printf " (x%d)",$wrong{$drill} if $wrong{$drill} > 1;
+            printf "  (%d total items remaining)\n\n",@drill + @again;
+            $last = $drill;
+         } else {
+            $right{$drill}++;
+            push(@again,$drill) if $right{$drill} < $wrong{$drill} + $min;
+            printf LOG "   Right: \"%s\" -> \"%s\" (%.2fs)\n", $drill, $ans, $duration;
+            print "$clear\n";
+            print "$drill -> $ans{$drill}\n\n";
+            printf "Correct answer in %.2f seconds.  (%d total items remaining)\n\n", $duration, @drill + @again;
+            $last = "";
+         }
       } elsif (&compare($ans,"")) {
          $wrong{$drill} += 0;
          printf LOG "   Check: \"%s\" -> \"%s\" (%.2fs)\n", $drill, $ans{$drill}, $duration;
