@@ -297,7 +297,7 @@ srand;
 $clear = `clear`;
 
 printf "%s\n\n\nStarting drill.\n\n",$clear,int(@drill);
-print LOG "Starting drill: `date`";
+print LOG "Starting drill: " . `date`;
 
 while (@drill || @again) {
    unless (@drill) {
