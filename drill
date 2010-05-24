@@ -2,6 +2,9 @@
 
 use Time::HiRes qw(time);
 
+$min_per_checked = 1;
+$min_per_wrong = 2;
+
 sub finished () {
    @wrong = sort keys %wrong;
 
@@ -305,6 +308,7 @@ while (@drill || @again) {
       @again = ();
    }
    $drill = splice(@drill,int(rand(@drill)),1);
+   $just_checked = 0;
    item: {
       printf "\n(%d left) %s -> ",@drill + 1,$drill;
       $asked = time;
@@ -325,8 +329,8 @@ while (@drill || @again) {
             print "\n\n";
             $last = $drill;
          } else {
-            $right{$drill}++;
-            push(@again,$drill) if $right{$drill} < $wrong{$drill} + $min;
+            $right{$drill}++ unless $just_checked;
+            push(@again,$drill) if $right{$drill} < $min + ($min_per_wrong * $wrong{$drill}) + ($min_per_checked * $checked{$drill});
             printf LOG "   Right: \"%s\" -> \"%s\" (%.2fs)\n", $drill, $ans, $duration;
             print "$clear\n";
             print "$drill -> $ans{$drill}\n\n";
@@ -335,6 +339,8 @@ while (@drill || @again) {
          }
       } elsif (&compare($ans,"")) {
          $wrong{$drill} += 0;
+         $checked{$drill}++ unless $just_checked;
+         $just_checked++;
          printf LOG "   Check: \"%s\" -> \"%s\" (%.2fs)\n", $drill, $ans{$drill}, $duration;
          print "$clear\n";
          print "Correct answer: $drill -> $ans{$drill}\n\n";
